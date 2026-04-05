@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PromptForge — Realistic Image Prompt Builder</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0d0f0e;
+  --surface:  #141716;
+  --surface2: #1c1f1d;
+  --border:   #2a2e2c;
+  --border2:  #363b38;
+  --fg:       #e8ede9;
+  --fg2:      #9aa89c;
+  --fg3:      #5a6b5d;
+  --accent:   #5dff8a;
+  --accent2:  #3dcc6a;
+  --accent-dim: rgba(93,255,138,0.08);
+  --accent-glow: rgba(93,255,138,0.18);
+  --red:      #ff5e5e;
+  --r:        10px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* noise overlay */
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:9999;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+@keyframes fadeDown { from{opacity:0;transform:translateY(-10px)} to{opacity:1;transform:none} }
+@keyframes cardIn   { 0%{opacity:0;transform:scale(0.92) translateY(10px)} 70%{transform:scale(1.02)} 100%{opacity:1;transform:none} }
+@keyframes popIn    { 0%{opacity:0;transform:scale(0.65)} 70%{transform:scale(1.07)} 100%{opacity:1;transform:scale(1)} }
+@keyframes pillBounce { 0%{transform:scale(1)} 30%{transform:scale(0.82)} 65%{transform:scale(1.12)} 100%{transform:scale(1)} }
+@keyframes promptReveal { from{opacity:0;letter-spacing:0.04em} to{opacity:1;letter-spacing:normal} }
+@keyframes spin     { to{transform:rotate(360deg)} }
+@keyframes pulseAccent { 0%,100%{box-shadow:0 0 0 0 rgba(93,255,138,0)} 50%{box-shadow:0 0 0 6px rgba(93,255,138,0.12)} }
+@keyframes modalIn  { from{opacity:0;transform:translateY(14px) scale(0.96)} to{opacity:1;transform:none} }
+@keyframes scanline { 0%{transform:translateY(-100%)} 100%{transform:translateY(100vh)} }
+
+/* ── HEADER ── */
+header {
+  padding: 20px 40px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--surface);
+  animation: fadeDown 0.4s ease both;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.logo {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.logo span {
+  color: var(--accent);
+}
+
+.logo-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg3);
+  border: 1px solid var(--border2);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dark-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-track {
+  width: 36px; height: 20px;
+  border-radius: 10px;
+  background: var(--border2);
+  border: 1px solid var(--border2);
+  position: relative;
+  transition: background 0.25s, border-color 0.25s;
+  flex-shrink: 0;
+}
+body.light .toggle-track { background: var(--accent-dim); border-color: var(--accent); }
+.toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--fg3);
+  transition: transform 0.24s cubic-bezier(.4,0,.2,1), background 0.24s;
+}
+body.light .toggle-thumb { transform: translateX(16px); background: var(--accent); }
+.toggle-lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg3);
+}
+
+/* ── LAYOUT ── */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  min-height: calc(100vh - 65px);
+}
+
+/* ── LEFT PANEL ── */
+.cat-panel {
+  padding: 28px 36px;
+  border-right: 1px solid var(--border);
+  animation: fadeUp 0.4s 0.06s ease both;
+}
+
+.panel-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.panel-lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg3);
+  white-space: nowrap;
+}
+
+.panel-line { flex:1; height:1px; background:var(--border); }
+
+.btn-new-cat {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 5px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 20px;
+  transition: all 0.16s;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.btn-new-cat:hover { background: var(--accent); color: #0d0f0e; transform: scale(1.04); }
+.btn-new-cat:active { transform: scale(0.96); }
+
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+/* ── CARD ── */
+.cat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.16s;
+  animation: cardIn 0.3s ease both;
+}
+.cat-card.dragging { opacity: 0.4; transform: scale(0.96); }
+.cat-card.drag-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.cat-card:not(.dragging):hover { border-color: var(--border2); transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+
+.cat-head {
+  padding: 9px 12px;
+  background: var(--surface2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  border-bottom: 1px solid var(--border);
+}
+.cat-head:active { cursor: grabbing; }
+
+.drag-handle {
+  color: var(--fg3);
+  font-size: 10px;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+  user-select: none;
+  cursor: grab;
+}
+
+.cat-name-wrap { flex:1; display:flex; align-items:center; gap:7px; min-width:0; }
+
+.cat-name {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  outline: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.14s;
+}
+.cat-name[contenteditable=true]:focus { border-bottom: 1px solid rgba(93,255,138,0.4); white-space: normal; }
+
+.cat-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.48rem;
+  background: rgba(93,255,138,0.07);
+  color: var(--fg3);
+  padding: 2px 6px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
+
+.cat-head-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.btn-rm-cat {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border2);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 9px;
+  color: var(--fg3);
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.14s; flex-shrink: 0;
+}
+.btn-rm-cat:hover { background: var(--red); border-color: var(--red); color: #fff; }
+
+.cat-pills {
+  padding: 9px 10px;
+  display: flex; flex-wrap: wrap; gap: 5px;
+  min-height: 42px; max-height: 120px;
+  overflow-y: auto;
+}
+.cat-pills::-webkit-scrollbar { width: 2px; }
+.cat-pills::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  font-size: 0.72rem;
+  color: var(--fg2);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  line-height: 1.3;
+  transition: all 0.13s;
+  user-select: none;
+}
+.pill:hover { border-color: var(--accent); color: var(--fg); transform: scale(1.03); }
+.pill.on {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+  animation: pillBounce 0.26s ease;
+}
+.pill-del {
+  opacity: 0;
+  font-size: 8px;
+  color: var(--red);
+  line-height: 1;
+  cursor: pointer;
+  padding: 1px;
+  transition: opacity 0.12s;
+  flex-shrink: 0;
+}
+.pill:hover .pill-del { opacity: 1; }
+
+.cat-add { padding: 5px 10px 8px; display: flex; gap: 6px; }
+.cat-input {
+  flex: 1;
+  border: 1px solid var(--border2);
+  background: var(--bg);
+  padding: 5px 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.76rem;
+  color: var(--fg);
+  border-radius: 20px;
+  outline: none;
+  transition: border-color 0.14s;
+}
+.cat-input:focus { border-color: var(--accent); }
+.cat-input::placeholder { color: var(--fg3); }
+
+.btn-add-item {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--fg3);
+  padding: 5px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  cursor: pointer;
+  border-radius: 20px;
+  transition: all 0.13s;
+  white-space: nowrap;
+}
+.btn-add-item:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+/* ── RIGHT OUTPUT PANEL ── */
+.out-panel {
+  background: var(--surface);
+  padding: 28px 24px;
+  position: sticky;
+  top: 65px;
+  height: calc(100vh - 65px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeUp 0.4s 0.12s ease both;
+}
+.out-panel::-webkit-scrollbar { width: 2px; }
+.out-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+.sec-lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg3);
+  display: flex; align-items: center; gap: 9px;
+  margin-bottom: 8px;
+}
+.sec-lbl::after { content:''; flex:1; height:1px; background:var(--border); }
+
+.base-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.84rem;
+  color: var(--fg);
+  resize: vertical;
+  outline: none;
+  min-height: 54px;
+  line-height: 1.5;
+  transition: border-color 0.14s;
+}
+.base-input:focus { border-color: var(--accent); }
+.base-input::placeholder { color: var(--fg3); }
+
+.divider { height: 1px; background: var(--border); }
+
+.chips-wrap { display: flex; flex-wrap: wrap; gap: 5px; min-height: 34px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-family: 'DM Sans', sans-serif;
+  border-radius: 20px;
+  cursor: pointer;
+  border: 1px solid rgba(93,255,138,0.2);
+  animation: popIn 0.2s ease both;
+  transition: opacity 0.13s, transform 0.11s;
+}
+.chip:hover { opacity: 0.65; transform: scale(0.94); }
+.chip-cat {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.42rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent2);
+  opacity: 0.8;
+}
+.empty-hint { font-size: 0.74rem; color: var(--fg3); font-style: italic; align-self: center; }
+
+.prompt-wrap {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 14px;
+  flex: 1;
+  min-height: 130px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.prompt-wrap.live {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+#promptText {
+  font-size: 0.84rem;
+  line-height: 1.72;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg3);
+  font-style: italic;
+  font-family: 'DM Sans', sans-serif;
+}
+#promptText.active { color: var(--fg); font-style: normal; animation: promptReveal 0.36s ease; }
+
+/* ── ACTIONS ── */
+.actions { display: flex; flex-direction: column; gap: 8px; }
+
+.btn-gen {
+  background: var(--accent);
+  color: #0a0f0c;
+  border: none;
+  padding: 13px 20px;
+  border-radius: var(--r);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  font-weight: 700;
+  transition: opacity 0.16s, transform 0.13s, box-shadow 0.16s;
+  animation: pulseAccent 2.8s ease infinite;
+}
+.btn-gen:hover { opacity: 0.88; box-shadow: 0 4px 24px var(--accent-glow); animation: none; transform: translateY(-1px); }
+.btn-gen:active { transform: scale(0.97); }
+.spin-icon { display: inline-block; }
+.btn-gen.spinning .spin-icon { animation: spin 0.55s linear infinite; }
+
+.btn-row { display: flex; gap: 7px; }
+.btn-sec {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--fg3);
+  padding: 9px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: var(--r);
+  transition: all 0.13s;
+}
+.btn-sec:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.btn-sec:active { transform: scale(0.97); }
+#copyBtn.copied { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+/* ── POST TIME ── */
+.post-time-wrap {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 11px 13px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.post-time-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.time-display {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  flex: 1;
+  min-width: 110px;
+}
+@keyframes flip { 0%{opacity:0;transform:translateY(-8px)} 100%{opacity:1;transform:none} }
+.time-display.flip { animation: flip 0.22s ease; }
+.ampm-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid rgba(93,255,138,0.25);
+}
+.btn-retime {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--fg3);
+  padding: 5px 11px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 20px;
+  transition: all 0.14s;
+  white-space: nowrap;
+}
+.btn-retime:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.time-note {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.5rem;
+  color: var(--fg3);
+  letter-spacing: 0.06em;
+}
+
+/* ── TOAST ── */
+#toast {
+  position: fixed; bottom: 20px; right: 20px;
+  background: var(--surface2);
+  color: var(--accent);
+  border: 1px solid rgba(93,255,138,0.2);
+  padding: 10px 18px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.08em;
+  border-radius: var(--r);
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(8px) scale(0.94);
+  transition: opacity 0.2s, transform 0.2s;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+#toast.show { opacity: 1; transform: none; }
+
+/* ── MODAL ── */
+.modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 8000;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s;
+  backdrop-filter: blur(4px);
+}
+.modal-bg.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  padding: 26px 24px;
+  width: 340px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  transform: translateY(14px) scale(0.95); opacity: 0;
+  transition: transform 0.2s, opacity 0.2s;
+}
+.modal-bg.open .modal { transform: none; opacity: 1; animation: modalIn 0.22s ease; }
+.modal-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+.modal-subtitle { font-size: 0.84rem; color: var(--fg2); margin-bottom: 16px; line-height: 1.5; }
+.modal-input {
+  width: 100%;
+  border: 1px solid var(--border2);
+  background: var(--bg);
+  padding: 9px 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.95rem;
+  color: var(--fg);
+  border-radius: 8px;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.14s;
+}
+.modal-input:focus { border-color: var(--accent); }
+.modal-input::placeholder { color: var(--fg3); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-m-cancel {
+  background: none; border: 1px solid var(--border2); color: var(--fg3);
+  padding: 7px 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.54rem;
+  cursor: pointer; border-radius: 20px; transition: all 0.13s;
+}
+.btn-m-cancel:hover { border-color: var(--fg2); color: var(--fg2); }
+.btn-m-ok {
+  background: var(--accent); color: #0a0f0c; border: none;
+  padding: 7px 18px; font-family: 'JetBrains Mono', monospace; font-size: 0.54rem;
+  cursor: pointer; border-radius: 20px; transition: all 0.13s; font-weight: 700;
+}
+.btn-m-ok:hover { opacity: 0.85; }
+.btn-m-danger {
+  background: var(--red); color: #fff; border: none;
+  padding: 7px 18px; font-family: 'JetBrains Mono', monospace; font-size: 0.54rem;
+  cursor: pointer; border-radius: 20px; transition: all 0.13s;
+}
+.btn-m-danger:hover { opacity: 0.82; }
+
+/* ── EMAIL COLLECTOR ── */
+.email-wrap {
+  background: var(--accent-dim);
+  border: 1px solid rgba(93,255,138,0.2);
+  border-radius: var(--r);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.email-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.email-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 700;
+}
+.email-sub {
+  font-size: 0.76rem;
+  color: var(--fg2);
+  line-height: 1.4;
+}
+.email-row {
+  display: flex;
+  gap: 7px;
+}
+.email-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.78rem;
+  color: var(--fg);
+  outline: none;
+  transition: border-color 0.14s;
+}
+.email-input:focus { border-color: var(--accent); }
+.email-input::placeholder { color: var(--fg3); }
+.btn-email-sub {
+  background: var(--accent);
+  color: #0a0f0c;
+  border: none;
+  padding: 8px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.14s;
+  white-space: nowrap;
+}
+.btn-email-sub:hover { opacity: 0.85; transform: scale(1.02); }
+.btn-email-sub:active { transform: scale(0.97); }
+.email-success {
+  display: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.56rem;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-align: center;
+  padding: 4px 0;
+}
+.email-privacy {
+  font-size: 0.66rem;
+  color: var(--fg3);
+  text-align: center;
+}
+
+/* ── LIGHT MODE ── */
+body.light {
+  --bg: #f5f5f2;
+  --surface: #ffffff;
+  --surface2: #efefeb;
+  --border: #ddddd8;
+  --border2: #ccccca;
+  --fg: #1a1a18;
+  --fg2: #5a5a55;
+  --fg3: #9a9a94;
+  --accent: #1a8c42;
+  --accent2: #156634;
+  --accent-dim: rgba(26,140,66,0.08);
+  --accent-glow: rgba(26,140,66,0.2);
+  --red: #d63a3a;
+}
+
+body.light .pill { background: #fff; }
+body.light .cat-input { background: #fff; }
+body.light .base-input { background: #fff; }
+body.light .modal-input { background: #fff; }
+body.light .prompt-wrap { background: #fff; }
+body.light .post-time-wrap { background: #fff; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .out-panel { position: static; height: auto; border-top: 1px solid var(--border); border-right: none; }
+  header { padding: 16px 20px; }
+  .cat-panel { padding: 20px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo-wrap">
+    <div class="logo">Prompt<span>Forge</span></div>
+    <div class="logo-tag">Realistic Image Prompts</div>
+  </div>
+  <div class="header-right">
+    <div class="dark-toggle" id="darkToggle" title="Toggle theme">
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span class="toggle-lbl" id="toggleLbl">Dark</span>
+    </div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- LEFT: CATEGORIES -->
+  <div class="cat-panel">
+    <div class="panel-hd">
+      <span class="panel-lbl">Prompt Parameters</span>
+      <div class="panel-line"></div>
+      <button class="btn-new-cat" id="btnNewCat">+ New Category</button>
+    </div>
+    <div class="cat-grid" id="catGrid"></div>
+  </div>
+
+  <!-- RIGHT: OUTPUT -->
+  <div class="out-panel">
+
+    <!-- Base subject -->
+    <div>
+      <div class="sec-lbl">Base Subject</div>
+      <textarea class="base-input" id="basePrompt" placeholder="e.g. portrait of a woman, 35mm film, natural light…" rows="2"></textarea>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Selected chips -->
+    <div>
+      <div class="sec-lbl">Selected Parameters</div>
+      <div class="chips-wrap" id="chipsWrap">
+        <span class="empty-hint">None selected yet</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Output prompt -->
+    <div>
+      <div class="sec-lbl">Generated Prompt</div>
+      <div class="prompt-wrap" id="promptWrap">
+        <div id="promptText">Select parameters or click Generate Random, then Build Prompt.</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button class="btn-gen" id="btnGen">
+        <span class="spin-icon">⟳</span> Generate Random
+      </button>
+      <button class="btn-sec" id="btnBuild" style="flex:none;width:100%">▶ Build Prompt</button>
+      <div class="btn-row">
+        <button class="btn-sec" id="copyBtn">Copy</button>
+        <button class="btn-sec" id="btnClear">Clear</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Post time -->
+    <div>
+      <div class="sec-lbl">Suggested Post Time</div>
+      <div class="post-time-wrap">
+        <div class="post-time-row">
+          <div class="time-display" id="timeDisplay">--:--</div>
+          <div class="ampm-badge" id="ampmDisplay">--</div>
+          <button class="btn-retime" id="btnRetime">↺ Refresh</button>
+        </div>
+        <div class="time-note" id="timeNote">Generating best time…</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Email collector -->
+    <div class="email-wrap" id="emailWrap">
+      <div class="email-header">
+        <div class="email-title">✦ Stay Updated</div>
+        <div class="email-sub">Get notified when new features drop — no spam, ever.</div>
+      </div>
+      <div class="email-row" id="emailRow">
+        <input class="email-input" id="emailInput" type="email" placeholder="your@email.com">
+        <button class="btn-email-sub" id="btnEmailSub">Notify me</button>
+      </div>
+      <div class="email-success" id="emailSuccess">✓ You're on the list — thanks!</div>
+      <div class="email-privacy">No account needed. Unsubscribe anytime.</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modal">
+    <div class="modal-title" id="modalTitle">New Category</div>
+    <div class="modal-subtitle" id="modalSubtitle">Enter a name for your new parameter category.</div>
+    <input class="modal-input" id="modalInput" placeholder="e.g. Lighting, Mood, Camera…">
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════
+//  DATA — default realistic photo prompt categories
+// ═══════════════════════════════════
+const DEFAULT_LIB = {
+  'Lighting': [
+    'golden hour', 'soft diffused light', 'dramatic side lighting', 'overcast sky',
+    'neon glow', 'candlelight', 'harsh noon sun', 'blue hour', 'window light',
+    'studio softbox', 'rim lighting', 'dappled sunlight'
+  ],
+  'Camera': [
+    '35mm lens', '85mm portrait lens', '50mm', 'wide angle 24mm',
+    'shallow depth of field', 'deep focus', 'film grain', 'tilt-shift',
+    'macro close-up', 'bird\'s eye view', 'low angle', 'Dutch angle'
+  ],
+  'Style': [
+    'cinematic', 'documentary', 'fashion editorial', 'fine art',
+    'street photography', 'analog film', 'vintage 1970s', 'hyperrealistic',
+    'painterly', 'minimalist', 'moody', 'high contrast'
+  ],
+  'Mood': [
+    'melancholic', 'serene', 'tense', 'joyful',
+    'mysterious', 'romantic', 'gritty', 'dreamlike',
+    'nostalgic', 'ethereal', 'raw', 'intimate'
+  ],
+  'Color Grade': [
+    'warm tones', 'cool desaturated', 'teal and orange', 'black and white',
+    'faded matte', 'rich saturated', 'soft pastel', 'high contrast B&W',
+    'cross-processed', 'sepia', 'monochromatic blue', 'golden amber'
+  ],
+  'Setting': [
+    'urban street', 'forest', 'interior room', 'rooftop at night',
+    'beach at sunset', 'industrial warehouse', 'coffee shop', 'studio',
+    'alleyway', 'mountain landscape', 'rainy window', 'empty road'
+  ],
+};
+
+const STORAGE_KEY = 'promptforge_lib_v1';
+let lib = {};
+let sel = {};
+
+function saveLib() { localStorage.setItem(STORAGE_KEY, JSON.stringify(lib)); }
+function loadLib() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    lib = raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(DEFAULT_LIB));
+  } catch(e) { lib = JSON.parse(JSON.stringify(DEFAULT_LIB)); }
+  if (!Object.keys(lib).length) lib = JSON.parse(JSON.stringify(DEFAULT_LIB));
+}
+
+// ═══════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ═══════════════════════════════════
+//  MODAL
+// ═══════════════════════════════════
+let modalCb = null;
+function showInputModal({ title, placeholder, onOk }) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSubtitle').textContent = 'Enter a name for your new parameter category.';
+  const inp = document.getElementById('modalInput');
+  inp.placeholder = placeholder; inp.value = ''; inp.style.display = 'block';
+  const acts = document.getElementById('modalActions');
+  acts.innerHTML = '';
+  const cancel = document.createElement('button'); cancel.className = 'btn-m-cancel'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', closeModal);
+  const ok = document.createElement('button'); ok.className = 'btn-m-ok'; ok.textContent = 'Create';
+  ok.addEventListener('click', () => onOk(inp.value.trim()));
+  acts.append(cancel, ok);
+  inp.addEventListener('keydown', function handler(e) {
+    if (e.key === 'Enter') { onOk(inp.value.trim()); inp.removeEventListener('keydown', handler); }
+    if (e.key === 'Escape') { closeModal(); inp.removeEventListener('keydown', handler); }
+  });
+  document.getElementById('modalBg').classList.add('open');
+  setTimeout(() => inp.focus(), 120);
+}
+
+function showConfirmModal({ title, subtitle, onConfirm }) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalSubtitle').textContent = subtitle;
+  document.getElementById('modalInput').style.display = 'none';
+  const acts = document.getElementById('modalActions');
+  acts.innerHTML = '';
+  const cancel = document.createElement('button'); cancel.className = 'btn-m-cancel'; cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', closeModal);
+  const del = document.createElement('button'); del.className = 'btn-m-danger'; del.textContent = 'Delete';
+  del.addEventListener('click', () => { onConfirm(); closeModal(); });
+  acts.append(cancel, del);
+  document.getElementById('modalBg').classList.add('open');
+}
+
+function closeModal() { document.getElementById('modalBg').classList.remove('open'); }
+document.getElementById('modalBg').addEventListener('click', e => { if (e.target === document.getElementById('modalBg')) closeModal(); });
+
+// ═══════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════
+function render() {
+  const grid = document.getElementById('catGrid');
+  grid.innerHTML = '';
+  let d = 0;
+  for (const cat of Object.keys(lib)) {
+    const card = makeCard(cat);
+    card.style.animationDelay = d + 'ms';
+    grid.appendChild(card);
+    d += 24;
+  }
+  renderChips();
+}
+
+function makeCard(cat) {
+  const card = mk('div', 'cat-card');
+  card.dataset.cat = cat;
+  card.draggable = true;
+
+  const head = mk('div', 'cat-head');
+  const dragHandle = mk('span', 'drag-handle'); dragHandle.textContent = '⠿'; dragHandle.title = 'Drag to reorder';
+  const nameWrap = mk('div', 'cat-name-wrap');
+  const nm = mk('div', 'cat-name'); nm.textContent = cat; nm.contentEditable = 'false'; nm.title = 'Double-click to rename';
+  nm.addEventListener('dblclick', () => startRename(nm, cat, card, countBadge));
+  nm.addEventListener('blur', () => finishRename(nm, cat, card, countBadge));
+  nm.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); nm.blur(); }
+    if (e.key === 'Escape') { nm.textContent = card.dataset.cat; nm.blur(); }
+  });
+  const countBadge = mk('span', 'cat-count'); countBadge.textContent = uniqueItems(cat).length + ' items';
+  nameWrap.append(nm, countBadge);
+  const actions = mk('div', 'cat-head-actions');
+  const rmBtn = mk('button', 'btn-rm-cat'); rmBtn.textContent = '✕'; rmBtn.title = 'Remove category';
+  rmBtn.addEventListener('click', () => showConfirmModal({
+    title: 'Remove Category',
+    subtitle: `Delete "${card.dataset.cat}" and all its items? This can't be undone.`,
+    onConfirm: () => doDeleteCategory(card.dataset.cat)
+  }));
+  actions.append(rmBtn);
+  head.append(dragHandle, nameWrap, actions);
+
+  const pillsDiv = mk('div', 'cat-pills'); pillsDiv.id = 'pills__' + sid(cat);
+  uniqueItems(cat).forEach(item => pillsDiv.appendChild(makePill(cat, item)));
+
+  const addRow = mk('div', 'cat-add');
+  const inp = mk('input', 'cat-input'); inp.placeholder = 'Add item…';
+  const addBtn = mk('button', 'btn-add-item'); addBtn.textContent = '+ Add';
+  const doAdd = () => {
+    const currentCat = card.dataset.cat;
+    const v = inp.value.trim(); if (!v) return;
+    lib[currentCat] = lib[currentCat] || [];
+    if (!lib[currentCat].includes(v)) {
+      lib[currentCat].push(v); saveLib();
+      pillsDiv.appendChild(makePill(currentCat, v));
+      countBadge.textContent = uniqueItems(currentCat).length + ' items';
+      toast('Item added!');
+    }
+    inp.value = ''; inp.focus();
+  };
+  addBtn.addEventListener('click', doAdd);
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+  addRow.append(inp, addBtn);
+
+  card.append(head, pillsDiv, addRow);
+  card.addEventListener('dragstart', onDragStart);
+  card.addEventListener('dragend',   onDragEnd);
+  card.addEventListener('dragover',  onDragOver);
+  card.addEventListener('dragleave', onDragLeave);
+  card.addEventListener('drop',      onDrop);
+  return card;
+}
+
+function makePill(cat, item) {
+  const p = mk('span', 'pill');
+  if (sel[cat] === item) p.classList.add('on');
+  p.dataset.cat = cat; p.dataset.item = item;
+  const txt = document.createTextNode(item);
+  const del = mk('span', 'pill-del'); del.textContent = '✕'; del.title = 'Remove';
+  del.addEventListener('click', e => { e.stopPropagation(); doDeleteItem(cat, item, p); });
+  p.append(txt, del);
+  p.addEventListener('click', () => toggleItem(cat, item, p));
+  return p;
+}
+
+function uniqueItems(cat) { return [...new Set((lib[cat]||[]).filter(i=>i&&i.trim()))]; }
+
+// ═══════════════════════════════════
+//  CHIPS
+// ═══════════════════════════════════
+function renderChips() {
+  const wrap = document.getElementById('chipsWrap');
+  wrap.innerHTML = '';
+  const entries = Object.entries(sel).filter(([,v])=>v);
+  if (!entries.length) { const h=mk('span','empty-hint'); h.textContent='None selected yet'; wrap.appendChild(h); return; }
+  entries.forEach(([cat,val]) => {
+    const c = mk('span','chip');
+    const lbl = mk('span','chip-cat'); lbl.textContent = cat;
+    c.append(lbl, ' ', val);
+    c.title = 'Click to deselect';
+    c.addEventListener('click', () => {
+      const p = document.querySelector(`.pill[data-cat="${CSS.escape(cat)}"][data-item="${CSS.escape(val)}"]`);
+      toggleItem(cat, val, p);
+    });
+    wrap.appendChild(c);
+  });
+}
+
+// ═══════════════════════════════════
+//  TOGGLE / DELETE
+// ═══════════════════════════════════
+function toggleItem(cat, item, pillEl) {
+  if (sel[cat] === item) {
+    delete sel[cat];
+    if (pillEl) pillEl.classList.remove('on');
+  } else {
+    const prev = document.querySelector(`.pill.on[data-cat="${CSS.escape(cat)}"]`);
+    if (prev) prev.classList.remove('on');
+    sel[cat] = item;
+    if (pillEl) pillEl.classList.add('on');
+  }
+  renderChips();
+}
+
+function doDeleteItem(cat, item, pillEl) {
+  lib[cat] = (lib[cat]||[]).filter(i=>i!==item);
+  if (sel[cat]===item) { delete sel[cat]; renderChips(); }
+  saveLib();
+  if (pillEl) {
+    pillEl.style.transition = 'opacity 0.15s, transform 0.15s';
+    pillEl.style.opacity = '0'; pillEl.style.transform = 'scale(0.6)';
+    setTimeout(() => {
+      pillEl.remove();
+      const card = document.querySelector(`.cat-card[data-cat="${CSS.escape(cat)}"]`);
+      if (card) { const b = card.querySelector('.cat-count'); if (b) b.textContent = uniqueItems(cat).length + ' items'; }
+    }, 160);
+  }
+}
+
+function doDeleteCategory(cat) {
+  delete lib[cat]; delete sel[cat]; saveLib();
+  const card = document.querySelector(`.cat-card[data-cat="${CSS.escape(cat)}"]`);
+  if (card) {
+    card.style.transition = 'opacity 0.2s, transform 0.2s';
+    card.style.opacity = '0'; card.style.transform = 'scale(0.88)';
+    setTimeout(() => { card.remove(); renderChips(); }, 220);
+  } else render();
+  toast(`"${cat}" removed`);
+}
+
+// ═══════════════════════════════════
+//  NEW CATEGORY
+// ═══════════════════════════════════
+document.getElementById('btnNewCat').addEventListener('click', () => {
+  showInputModal({
+    title: 'New Category',
+    placeholder: 'e.g. Lighting, Pose, Location…',
+    onOk: (name) => {
+      if (!name) return;
+      if (lib[name] !== undefined) { toast('Category already exists!'); return; }
+      lib[name] = []; saveLib(); closeModal();
+      const card = makeCard(name);
+      document.getElementById('catGrid').appendChild(card);
+      toast(`"${name}" created!`);
+    }
+  });
+});
+
+// ═══════════════════════════════════
+//  GENERATE RANDOM
+// ═══════════════════════════════════
+document.getElementById('btnGen').addEventListener('click', () => {
+  const btn = document.getElementById('btnGen');
+  btn.classList.add('spinning');
+  setTimeout(() => {
+    sel = {};
+    document.querySelectorAll('.pill.on').forEach(p => p.classList.remove('on'));
+    Object.keys(lib).forEach(cat => pickRandom(cat));
+    renderChips(); doBuildPrompt();
+    btn.classList.remove('spinning');
+    toast('✦ Random prompt generated!');
+  }, 280);
+});
+
+function pickRandom(cat) {
+  const v = uniqueItems(cat); if (!v.length) return;
+  const item = v[Math.floor(Math.random()*v.length)];
+  sel[cat] = item;
+  const p = document.querySelector(`.pill[data-cat="${CSS.escape(cat)}"][data-item="${CSS.escape(item)}"]`);
+  if (p) p.classList.add('on');
+}
+
+// ═══════════════════════════════════
+//  BUILD PROMPT
+// ═══════════════════════════════════
+document.getElementById('btnBuild').addEventListener('click', doBuildPrompt);
+function doBuildPrompt() {
+  const base = document.getElementById('basePrompt').value.trim();
+  const parts = Object.values(sel).filter(Boolean);
+  const ptEl = document.getElementById('promptText');
+  const wrap = document.getElementById('promptWrap');
+  if (!parts.length) {
+    ptEl.textContent = 'No parameters selected yet.';
+    ptEl.className = ''; wrap.classList.remove('live'); return;
+  }
+  ptEl.textContent = [base, ...parts].filter(Boolean).join(', ');
+  ptEl.className = 'active'; wrap.classList.add('live');
+}
+
+// ═══════════════════════════════════
+//  COPY
+// ═══════════════════════════════════
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const text = document.getElementById('promptText').textContent;
+  if (!text || text.startsWith('No param') || text.startsWith('Select')) { toast('Build a prompt first!'); return; }
+  const btn = document.getElementById('copyBtn');
+  const flash = () => {
+    btn.textContent = '✓ Copied!'; btn.classList.add('copied');
+    toast('✓ Copied to clipboard!');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(flash).catch(() => fallbackCopy(text, flash));
+  } else { fallbackCopy(text, flash); }
+});
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  Object.assign(ta.style, {position:'fixed',opacity:'0',top:'0',left:'0'});
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) { toast('Copy failed — use Ctrl+C'); }
+  document.body.removeChild(ta);
+}
+
+// ═══════════════════════════════════
+//  CLEAR
+// ═══════════════════════════════════
+document.getElementById('btnClear').addEventListener('click', () => {
+  sel = {};
+  document.querySelectorAll('.pill.on').forEach(p => p.classList.remove('on'));
+  const pt = document.getElementById('promptText');
+  pt.textContent = 'Select parameters or click Generate Random, then Build Prompt.';
+  pt.className = ''; document.getElementById('promptWrap').classList.remove('live');
+  renderChips(); toast('Cleared!');
+});
+
+// ═══════════════════════════════════
+//  RENAME
+// ═══════════════════════════════════
+function startRename(nm, oldCat, card, badge) {
+  nm.contentEditable = 'true'; nm.focus();
+  const range = document.createRange(); range.selectNodeContents(nm); range.collapse(false);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(range);
+}
+
+function finishRename(nm, oldCat, card, badge) {
+  nm.contentEditable = 'false';
+  const newName = nm.textContent.trim();
+  if (!newName || newName === card.dataset.cat) { nm.textContent = card.dataset.cat; return; }
+  if (lib[newName] !== undefined) { toast('Name already exists!'); nm.textContent = card.dataset.cat; return; }
+  const newLib = {};
+  for (const k of Object.keys(lib)) { newLib[k === card.dataset.cat ? newName : k] = lib[k]; }
+  lib = newLib;
+  if (sel[card.dataset.cat] !== undefined) { sel[newName] = sel[card.dataset.cat]; delete sel[card.dataset.cat]; }
+  saveLib(); card.dataset.cat = newName; nm.textContent = newName;
+  badge.textContent = uniqueItems(newName).length + ' items';
+  card.querySelectorAll('.pill').forEach(p => p.dataset.cat = newName);
+  renderChips(); toast(`Renamed to "${newName}"`);
+}
+
+// ═══════════════════════════════════
+//  DRAG & DROP
+// ═══════════════════════════════════
+let dragSrc = null;
+function onDragStart(e) { dragSrc = this; this.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', this.dataset.cat); }
+function onDragEnd() { this.classList.remove('dragging'); document.querySelectorAll('.cat-card').forEach(c => c.classList.remove('drag-over')); dragSrc = null; }
+function onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (this !== dragSrc) this.classList.add('drag-over'); }
+function onDragLeave() { this.classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault(); this.classList.remove('drag-over');
+  if (!dragSrc || dragSrc === this) return;
+  const grid = document.getElementById('catGrid');
+  const cards = [...grid.querySelectorAll('.cat-card')];
+  const fromIdx = cards.indexOf(dragSrc), toIdx = cards.indexOf(this);
+  if (fromIdx < toIdx) grid.insertBefore(dragSrc, this.nextSibling);
+  else grid.insertBefore(dragSrc, this);
+  const newOrder = [...grid.querySelectorAll('.cat-card')].map(c => c.dataset.cat);
+  const newLib = {}; newOrder.forEach(k => { if (lib[k] !== undefined) newLib[k] = lib[k]; });
+  lib = newLib; saveLib(); toast('Order saved!');
+}
+
+// ═══════════════════════════════════
+//  DARK/LIGHT TOGGLE
+// ═══════════════════════════════════
+const darkToggle = document.getElementById('darkToggle');
+const toggleLbl  = document.getElementById('toggleLbl');
+function applyTheme(isLight) {
+  document.body.classList.toggle('light', isLight);
+  toggleLbl.textContent = isLight ? 'Light' : 'Dark';
+  localStorage.setItem('promptforge_theme', isLight ? 'light' : 'dark');
+}
+darkToggle.addEventListener('click', () => applyTheme(!document.body.classList.contains('light')));
+if (localStorage.getItem('promptforge_theme') === 'light') applyTheme(true);
+
+// ═══════════════════════════════════
+//  POST TIME
+// ═══════════════════════════════════
+const TIME_TIPS = [
+  'Peak engagement window 🔥', 'Golden hour for posts ✨',
+  'High traffic slot 📈', 'Great reach window 👀',
+  'Optimal posting time 🎯', 'Audience active now 💬',
+  'Prime scroll time 🌙', 'Prime time exposure ⭐',
+];
+function randomTime() {
+  const h = Math.floor(Math.random()*12)+1;
+  const m = Math.floor(Math.random()*60);
+  const ampm = Math.random()<0.5?'AM':'PM';
+  const td = document.getElementById('timeDisplay');
+  td.classList.remove('flip'); void td.offsetWidth; td.classList.add('flip');
+  td.textContent = `${h}:${m.toString().padStart(2,'0')}`;
+  document.getElementById('ampmDisplay').textContent = ampm;
+  document.getElementById('timeNote').textContent = TIME_TIPS[Math.floor(Math.random()*TIME_TIPS.length)];
+}
+document.getElementById('btnRetime').addEventListener('click', randomTime);
+randomTime();
+
+// ═══════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════
+function mk(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt !== undefined) e.textContent = txt;
+  return e;
+}
+function sid(s) { return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
+
+// ═══════════════════════════════════
+//  EMAIL COLLECTOR
+//  → Kirim ke Google Form, data masuk ke Google Sheet kamu
+//  → Ganti FORM_ACTION_URL dengan URL Google Form kamu
+//  → Ganti ENTRY_ID dengan entry ID field email di form kamu
+// ═══════════════════════════════════
+const FORM_ACTION_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSclaHSCVgS7wvOYUvVDOrlRXbKmbIIAPMYZTgqEKcOupSGtdg/formResponse';
+const ENTRY_ID = 'entry.1751593164';
+
+document.getElementById('btnEmailSub').addEventListener('click', submitEmail);
+document.getElementById('emailInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitEmail();
+});
+
+function submitEmail() {
+  const email = document.getElementById('emailInput').value.trim();
+  if (!email || !email.includes('@')) { toast('Please enter a valid email!'); return; }
+
+  // Kalau belum setup Google Form, simpan ke localStorage dulu
+  if (FORM_ACTION_URL === 'YOUR_GOOGLE_FORM_ACTION_URL') {
+    const emails = JSON.parse(localStorage.getItem('promptforge_emails') || '[]');
+    if (!emails.includes(email)) { emails.push(email); localStorage.setItem('promptforge_emails', JSON.stringify(emails)); }
+    showEmailSuccess();
+    return;
+  }
+
+  // Submit ke Google Form via hidden iframe (no CORS issue)
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = FORM_ACTION_URL;
+  form.target = iframe.name = 'pf_submit_' + Date.now();
+  const input = document.createElement('input');
+  input.type = 'hidden'; input.name = ENTRY_ID; input.value = email;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+  setTimeout(() => { document.body.removeChild(form); document.body.removeChild(iframe); }, 3000);
+  showEmailSuccess();
+}
+
+function showEmailSuccess() {
+  document.getElementById('emailRow').style.display = 'none';
+  document.getElementById('emailSuccess').style.display = 'block';
+  toast('✓ You\'re on the list!');
+}
+
+// ═══════════════════════════════════
+//  INIT
+// ═══════════════════════════════════
+loadLib();
+render();
+</script>
+</body>
+</html>
