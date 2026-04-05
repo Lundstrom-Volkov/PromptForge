@@ -823,11 +823,7 @@ body.light .post-time-wrap { background: #fff; }
         <div class="email-title">✦ Stay Updated</div>
         <div class="email-sub">Get notified when new features drop — no spam, ever.</div>
       </div>
-      <div class="email-row" id="emailRow">
-        <input class="email-input" id="emailInput" type="email" placeholder="your@email.com">
-        <button class="btn-email-sub" id="btnEmailSub">Notify me</button>
-      </div>
-      <div class="email-success" id="emailSuccess">✓ You're on the list — thanks!</div>
+      <button class="btn-email-sub" id="btnEmailSub" style="width:100%">Notify me →</button>
       <div class="email-privacy">No account needed. Unsubscribe anytime.</div>
     </div>
 
@@ -1297,22 +1293,12 @@ function sid(s) { return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
 const FORM_ACTION_URL = 'YOUR_GOOGLE_FORM_ACTION_URL'; // ganti ini
 const ENTRY_ID = 'entry.YOUR_ENTRY_ID';                 // ganti ini
 
-document.getElementById('btnEmailSub').addEventListener('click', submitEmail);
-document.getElementById('emailInput').addEventListener('keydown', e => {
-  if (e.key === 'Enter') submitEmail();
+document.getElementById('btnEmailSub').addEventListener('click', () => {
+  window.open('https://docs.google.com/forms/d/e/1FAIpQLSclaHSCVgS7wvOYUvVDOrlRXbKmbIIAPMYZTgqEKcOupSGtdg/viewform', '_blank');
 });
 
 function submitEmail() {
-  const email = document.getElementById('emailInput').value.trim();
-  if (!email || !email.includes('@')) { toast('Please enter a valid email!'); return; }
-
-  // Kalau belum setup Google Form, simpan ke localStorage dulu
   if (FORM_ACTION_URL === 'YOUR_GOOGLE_FORM_ACTION_URL') {
-    const emails = JSON.parse(localStorage.getItem('promptforge_emails') || '[]');
-    if (!emails.includes(email)) { emails.push(email); localStorage.setItem('promptforge_emails', JSON.stringify(emails)); }
-    showEmailSuccess();
-    return;
-  }
 
   // Submit ke Google Form via hidden iframe
   const iframeName = 'pf_hidden_' + Date.now();
