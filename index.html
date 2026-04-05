@@ -1314,13 +1314,30 @@ function submitEmail() {
     return;
   }
 
-  // Submit ke Google Form via fetch (no new tab, no CORS issue)
-  fetch(FORM_ACTION_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `${ENTRY_ID}=${encodeURIComponent(email)}`
-  });
+  // Submit ke Google Form via hidden iframe
+  const iframeName = 'pf_hidden_' + Date.now();
+  const iframe = document.createElement('iframe');
+  iframe.name = iframeName;
+  iframe.style.cssText = 'display:none;position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;';
+  document.body.appendChild(iframe);
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = FORM_ACTION_URL;
+  form.target = iframeName;
+  form.style.display = 'none';
+
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = ENTRY_ID;
+  input.value = email;
+  form.appendChild(input);
+  document.body.appendChild(form);
+  form.submit();
+
+  setTimeout(() => {
+    try { document.body.removeChild(form); document.body.removeChild(iframe); } catch(e) {}
+  }, 3000);
   showEmailSuccess();
 }
 
