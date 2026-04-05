@@ -1286,52 +1286,10 @@ function sid(s) { return String(s).replace(/[^a-zA-Z0-9]/g,'_'); }
 
 // ═══════════════════════════════════
 //  EMAIL COLLECTOR
-//  → Kirim ke Google Form, data masuk ke Google Sheet kamu
-//  → Ganti FORM_ACTION_URL dengan URL Google Form kamu
-//  → Ganti ENTRY_ID dengan entry ID field email di form kamu
 // ═══════════════════════════════════
-const FORM_ACTION_URL = 'YOUR_GOOGLE_FORM_ACTION_URL'; // ganti ini
-const ENTRY_ID = 'entry.YOUR_ENTRY_ID';                 // ganti ini
-
 document.getElementById('btnEmailSub').addEventListener('click', () => {
   window.open('https://docs.google.com/forms/d/e/1FAIpQLSclaHSCVgS7wvOYUvVDOrlRXbKmbIIAPMYZTgqEKcOupSGtdg/viewform', '_blank');
 });
-
-function submitEmail() {
-  if (FORM_ACTION_URL === 'YOUR_GOOGLE_FORM_ACTION_URL') {
-
-  // Submit ke Google Form via hidden iframe
-  const iframeName = 'pf_hidden_' + Date.now();
-  const iframe = document.createElement('iframe');
-  iframe.name = iframeName;
-  iframe.style.cssText = 'display:none;position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;';
-  document.body.appendChild(iframe);
-
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = FORM_ACTION_URL;
-  form.target = iframeName;
-  form.style.display = 'none';
-
-  const input = document.createElement('input');
-  input.type = 'hidden';
-  input.name = ENTRY_ID;
-  input.value = email;
-  form.appendChild(input);
-  document.body.appendChild(form);
-  form.submit();
-
-  setTimeout(() => {
-    try { document.body.removeChild(form); document.body.removeChild(iframe); } catch(e) {}
-  }, 3000);
-  showEmailSuccess();
-}
-
-function showEmailSuccess() {
-  document.getElementById('emailRow').style.display = 'none';
-  document.getElementById('emailSuccess').style.display = 'block';
-  toast('✓ You\'re on the list!');
-}
 
 // ═══════════════════════════════════
 //  INIT
